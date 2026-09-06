@@ -75,6 +75,16 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         raise ValueError("require 0 < baseline_fraction < calibration_fraction < 1")
     if baseline_end < 10 or calibration_end - baseline_end < 10 or (not reference_source and calibration_end >= len(reference_frame)):
         raise ValueError("fractions must leave 10 baseline rows, 10 calibration rows, and one evaluation row")
+    # A combined, labelled data set is allowed only when its chronological
+    # reference segment is demonstrably normal.  Labels are never used for
+    # scoring or threshold selection; this is a split-validity assertion.
+    if config.label_column and config.label_column in reference_frame:
+        reference_labels = reference_frame[config.label_column].iloc[:calibration_end]
+        if reference_labels.astype(int).ne(0).any():
+            raise ValueError(
+                "baseline and calibration rows must be normal-labelled; "
+                "use a chronological normal segment or a separate reference file"
+            )
     excluded = {config.timestamp_column, config.label_column, config.score_column}
     features = [column for column in reference_frame.select_dtypes(include="number").columns
                 if column not in excluded and column in evaluation_frame]
@@ -106,6 +116,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     incidents_to_frame(predicted, evaluation["timestamp"]).to_csv(run_dir / "incidents.csv", index=False)
     metrics: dict[str, Any] = {"rows": len(scoring_frame), "reference_rows": len(reference_frame),
                                "baseline_rows": baseline_end, "calibration_rows": calibration_end - baseline_end,
+                               "reference_anomaly_rows": 0,
                                "evaluation_rows": len(evaluation),
                                "evaluation_point_alerts": int(evaluation["point_alert"].sum()),
                                "evaluation_alert_rate": float(evaluation["point_alert"].mean())}

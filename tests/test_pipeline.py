@@ -62,6 +62,23 @@ def test_swat_reference_is_not_used_as_evaluation(tmp_path):
     assert "false_alerts_per_day" in metrics
 
 
+def test_combined_swat_requires_normal_baseline_and_calibration(tmp_path):
+    frame = pd.DataFrame({
+        " Timestamp": pd.date_range("2015-12-28 10:00", periods=100, freq="s").strftime("%d/%m/%Y %I:%M:%S %p"),
+        " FIT101": np.linspace(1.0, 1.2, 100),
+        "Normal/Attack": ["Attack"] + ["Normal"] * 99,
+    })
+    path = tmp_path / "merged.csv"
+    frame.to_csv(path, index=False)
+    config = PipelineConfig(input_path=str(path), dataset="swat", artifacts_dir=str(tmp_path / "artifacts"), run_id="invalid")
+    try:
+        run_pipeline(config)
+    except ValueError as error:
+        assert "normal-labelled" in str(error)
+    else:
+        raise AssertionError("combined SWaT input with attack-labelled calibration rows was accepted")
+
+
 def test_metropt_raw_derives_labels_and_drops_saved_index(tmp_path):
     path = tmp_path / "metro.csv"
     pd.DataFrame({

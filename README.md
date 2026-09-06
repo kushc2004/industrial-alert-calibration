@@ -30,8 +30,7 @@ industrial-alerts run data/telemetry.csv --timestamp-column timestamp --label-co
   --run-id swat-v1 --artifacts-dir artifacts --alpha 0.01 --max-gap-steps 3 --min-event-points 2
 
 industrial-alerts run 'MetroPT3(AirCompressor).csv' --dataset metropt_raw --run-id metropt-v1
-industrial-alerts run SWaT_Dataset_Attack_v0.xlsx \
-  --reference SWaT_Dataset_Normal_v1.xlsx --dataset swat --run-id swat-v1
+industrial-alerts run merged.csv --dataset swat --run-id swat-v1
 ```
 
 The runner is resumable. Re-run the exact command with `--resume`; completed stages with a matching input fingerprint and configuration are reused. Each run writes a portable artifact directory:
@@ -47,7 +46,7 @@ artifacts/swat-v1/
 
 ## Kaggle
 
-Attach MetroPT-3 plus a Kaggle dataset you create from the official SWaT A1/A2 file pair, clone this repository, and run:
+Attach [MetroPT-3](https://www.kaggle.com/datasets/joebeachcapital/metropt-3-dataset) and the public [SWaT mirror](https://www.kaggle.com/datasets/vishala28/swat-dataset-secure-water-treatment-system), clone this repository, and run:
 
 ```bash
 pip install -e /kaggle/input/industrial-alert-calibration
@@ -56,8 +55,7 @@ python /kaggle/input/industrial-alert-calibration/kaggle/run_kaggle.py \
   --dataset metropt_raw --run-id metropt-conformal-v2
 
 python /kaggle/input/industrial-alert-calibration/kaggle/run_kaggle.py \
-  --input /kaggle/input/swat-a1-a2-physical/SWaT_Dataset_Attack_v0.xlsx \
-  --reference /kaggle/input/swat-a1-a2-physical/SWaT_Dataset_Normal_v1.xlsx \
+  --input /kaggle/input/swat-dataset-secure-water-treatment-system/merged.csv \
   --dataset swat --run-id swat-conformal-v2
 ```
 
@@ -65,8 +63,8 @@ The script writes to `/kaggle/working/artifacts/<run-id>`. Publish that director
 
 ## Method and validation boundary
 
-The initial `baseline_fraction` fits robust feature centers and scales. The following chronological segment up to `calibration_fraction` forms the label-free conformal calibration distribution. With one input, the remaining chronology is evaluation-only. With `--reference`, the reference file supplies baseline and calibration only, and the input file is wholly evaluation-only; its labels never influence fitting, calibration, or threshold selection. The conformal p-value is the finite-sample upper-tail rank of a score against the frozen calibration distribution. A p-value at or below `alpha` becomes a point alert.
+The initial `baseline_fraction` fits robust feature centers and scales. The following chronological segment up to `calibration_fraction` forms the label-free conformal calibration distribution. With one input, the remaining chronology is evaluation-only. With `--reference`, the reference file supplies baseline and calibration only, and the input file is wholly evaluation-only; its labels never influence fitting, calibration, or threshold selection. When labels are present, the runner asserts that the baseline and calibration rows are all normal before fitting. The conformal p-value is the finite-sample upper-tail rank of a score against the frozen calibration distribution. A p-value at or below `alpha` becomes a point alert.
 
-For the defensible SWaT experiment, use the iTrust A1/A2 December 2015 release: `Normal_v1` is strictly baseline/calibration data; `Attack_v0` is wholly evaluation data and retains both normal and attack-labelled periods. The adapter accepts the official `.xlsx` files, drops their unit-identification row, canonicalizes known whitespace variants such as `A ttack`, parses day-first timestamps, orders records by time, and removes duplicate timestamps. It reports event precision/recall, false-alert events per calendar day of evaluation, and median incident detection delay. Do not use an attack-only mirror to claim false-alert rates or operational alert reduction.
+For the public SWaT experiment, use this mirror's `merged.csv`, not `attack.csv` alone: it contains normal and attack-labelled telemetry, so the held-out portion supports false-alert events per calendar day as well as event precision/recall and median incident detection delay. The adapter canonicalizes whitespace variants such as `A ttack`, parses day-first timestamps, orders records by time, removes duplicate timestamps, and rejects a run if an attack-labelled row enters its baseline or calibration segment. `normal.csv` plus `attack.csv` remains useful for a separate-reference experiment, but `attack.csv` alone cannot support a false-alert-rate claim.
 
 This is a reproducible research pipeline, not a claim that it diagnoses root cause or is production-ready. Use known incident windows and domain review before operational deployment.
