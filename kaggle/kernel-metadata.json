@@ -7,7 +7,10 @@
   "is_private": false,
   "enable_gpu": true,
   "enable_internet": true,
-  "dataset_sources": ["kushchaudhari/labelled-industrial-telemetry-benchmarks"],
+  "dataset_sources": [
+    "joebeachcapital/metropt-3-dataset",
+    "vishala28/swat-dataset-secure-water-treatment-system"
+  ],
   "competition_sources": [],
   "kernel_sources": []
 }

@@ -12,16 +12,35 @@ class Incident:
     end: int
 
 
-def group_positive_runs(values: pd.Series, max_gap_steps: int, min_points: int) -> list[Incident]:
+def group_positive_runs(
+    values: pd.Series, max_gap_steps: int, min_points: int, timestamps: pd.Series | None = None
+) -> list[Incident]:
+    """Group positive samples, without bridging missing stretches of time.
+
+    Some public incident files retain attack rows but omit the normal rows
+    between attacks.  Positional adjacency alone would merge those distinct
+    incidents, so an observed timestamp gap larger than the inferred sampling
+    cadence also closes an incident.
+    """
     positive = np.flatnonzero(values.to_numpy(dtype=bool))
     if len(positive) == 0:
         return []
+    max_time_gap: pd.Timedelta | None = None
+    if timestamps is not None:
+        parsed = pd.to_datetime(timestamps, utc=True)
+        cadence = parsed.diff().dropna()
+        cadence = cadence[cadence > pd.Timedelta(0)]
+        if not cadence.empty:
+            # A low quantile recovers the nominal cadence even when this file
+            # already omits long normal stretches between labelled incidents.
+            max_time_gap = cadence.quantile(0.10) * (max_gap_steps + 1)
     incidents: list[Incident] = []
     start = previous = int(positive[0])
     count = 1
     for current_value in positive[1:]:
         current = int(current_value)
-        if current - previous <= max_gap_steps + 1:
+        time_contiguous = max_time_gap is None or timestamps.iloc[current] - timestamps.iloc[previous] <= max_time_gap
+        if current - previous <= max_gap_steps + 1 and time_contiguous:
             previous = current
             count += 1
             continue

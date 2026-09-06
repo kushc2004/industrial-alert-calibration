@@ -10,7 +10,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Calibrate multivariate industrial anomaly alerts into incidents.")
     parser.add_argument("command", choices=["run"])
     parser.add_argument("input_path")
-    parser.add_argument("--dataset", choices=["generic", "metropt", "chiller"], default="generic")
+    parser.add_argument("--reference")
+    parser.add_argument("--dataset", choices=["generic", "metropt", "metropt_raw", "chiller", "swat"], default="generic")
     parser.add_argument("--timestamp-column", default="timestamp")
     parser.add_argument("--label-column", default="label")
     parser.add_argument("--score-column")
@@ -25,6 +26,7 @@ def main() -> None:
     args = parser.parse_args()
     values = vars(args)
     values.pop("command")
+    values["reference_path"] = values.pop("reference")
     config = PipelineConfig(**values)
     print(json.dumps(run_pipeline(config), indent=2, sort_keys=True))
 
