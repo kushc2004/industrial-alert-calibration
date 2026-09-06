@@ -41,7 +41,7 @@ def test_swat_reference_is_not_used_as_evaluation(tmp_path):
     attack = pd.DataFrame({
         " Timestamp": pd.date_range("2015-12-30 10:00", periods=20, freq="s").strftime("%d/%m/%Y %I:%M:%S %p"),
         " FIT101": np.r_[np.ones(10), np.full(10, 25.0)],
-        "Normal/Attack": ["Normal"] * 10 + ["Attack"] * 10,
+        "Normal/Attack": ["Normal"] * 10 + ["A ttack"] * 10,
     })
     reference_path, attack_path = tmp_path / "normal.csv", tmp_path / "attack.csv"
     reference.to_csv(reference_path, index=False)
@@ -57,6 +57,9 @@ def test_swat_reference_is_not_used_as_evaluation(tmp_path):
     assert set(scores.iloc[20:30]["split"]) == {"calibration"}
     assert set(scores.iloc[30:100]["split"]) == {"reference_unused"}
     assert set(scores.iloc[100:]["split"]) == {"evaluation"}
+    assert scores.iloc[110:]["label"].eq(1).all()
+    assert metrics["evaluation_duration_days"] > 0
+    assert "false_alerts_per_day" in metrics
 
 
 def test_metropt_raw_derives_labels_and_drops_saved_index(tmp_path):

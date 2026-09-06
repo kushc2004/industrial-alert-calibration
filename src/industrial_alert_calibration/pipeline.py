@@ -113,7 +113,11 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         actual = group_positive_runs(
             evaluation["label"].astype(bool), config.max_gap_steps, 1, evaluation["timestamp"]
         )
-        metrics |= evaluate_events(predicted, actual)
+        metrics |= evaluate_events(predicted, actual, evaluation["timestamp"])
+        elapsed_seconds = (evaluation["timestamp"].iloc[-1] - evaluation["timestamp"].iloc[0]).total_seconds()
+        if elapsed_seconds > 0:
+            metrics["evaluation_duration_days"] = elapsed_seconds / 86_400
+            metrics["false_alerts_per_day"] = metrics["false_alert_events"] / metrics["evaluation_duration_days"]
     write_json(run_dir / "metrics.json", metrics)
     write_json(manifest_path, {"status": "complete", "input_sha256": fingerprint,
                                "reference_sha256": reference_fingerprint, "config": config_dict})

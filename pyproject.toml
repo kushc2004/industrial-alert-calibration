@@ -7,7 +7,7 @@ name = "industrial-alert-calibration"
 version = "0.1.0"
 description = "Reproducible conformal calibration and event-level evaluation for industrial anomaly alerts"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.26", "pandas>=2.1", "pyarrow>=14"]
+dependencies = ["numpy>=1.26", "pandas>=2.1", "pyarrow>=14", "openpyxl>=3.1"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

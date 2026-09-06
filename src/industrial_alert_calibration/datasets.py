@@ -21,7 +21,7 @@ def load_dataset(path: Path, preset: DatasetPreset) -> pd.DataFrame:
     if preset == "generic":
         return pd.read_parquet(path) if path.suffix.lower() in {".parquet", ".pq"} else pd.read_csv(path)
 
-    frame = pd.read_csv(path)
+    frame = pd.read_excel(path, header=1) if preset == "swat" and path.suffix.lower() in {".xls", ".xlsx"} else pd.read_csv(path)
     if preset == "metropt":
         if "timestamp" not in frame or "label" not in frame:
             raise ValueError("metropt input must contain timestamp and label columns")
@@ -48,12 +48,25 @@ def load_dataset(path: Path, preset: DatasetPreset) -> pd.DataFrame:
         )
         return frame
     if preset == "swat":
+        # The official iTrust release is distributed as Excel workbooks.  Its
+        # first row contains unit identifiers (P1, P2, ...), not field names;
+        # public mirrors generally use CSV with a conventional header.
         frame.columns = frame.columns.str.strip()
         if "Timestamp" not in frame or "Normal/Attack" not in frame:
             raise ValueError("swat input must contain Timestamp and Normal/Attack columns")
         frame = frame.rename(columns={"Timestamp": "timestamp"})
-        frame["timestamp"] = pd.to_datetime(frame["timestamp"].str.strip(), dayfirst=True, errors="raise", utc=True)
-        frame["label"] = frame["Normal/Attack"].astype(str).str.strip().eq("Attack").astype(int)
+        frame["timestamp"] = pd.to_datetime(
+            frame["timestamp"].astype(str).str.strip(), dayfirst=True, errors="raise", utc=True
+        )
+        # The official files contain occasional whitespace variants such as
+        # "A ttack".  Canonicalise status text instead of silently treating an
+        # unknown value as normal operation.
+        status = frame["Normal/Attack"].astype(str).str.replace(r"\s+", "", regex=True).str.casefold()
+        invalid_status = ~status.isin({"normal", "attack"})
+        if invalid_status.any():
+            examples = sorted(status.loc[invalid_status].unique())[:3]
+            raise ValueError(f"unrecognised SWaT Normal/Attack values: {examples}")
+        frame["label"] = status.eq("attack").astype(int)
         frame = frame.drop(columns=["Normal/Attack"])
         for column in frame.columns.drop("timestamp"):
             frame[column] = pd.to_numeric(frame[column], errors="raise")

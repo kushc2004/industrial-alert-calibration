@@ -14,7 +14,7 @@ It reports alert volume, event precision/recall, detection delay, and a false-al
 
 ## Input
 
-Provide a CSV or Parquet file with timestamped numeric sensor columns. `label` is optional but required for evaluation. Labels use `0` for normal and `1` for anomaly. A precomputed `score` column can be supplied with `--score-column`; otherwise a robust multivariate score is built from the numeric sensor columns. The built-in adapters include `metropt_raw` (the original MetroPT-3 CSV with published failure windows) and `swat` (the normal/attack CSV schema).
+Provide a CSV or Parquet file with timestamped numeric sensor columns. `label` is optional but required for evaluation. Labels use `0` for normal and `1` for anomaly. A precomputed `score` column can be supplied with `--score-column`; otherwise a robust multivariate score is built from the numeric sensor columns. The built-in adapters include `metropt_raw` (the original MetroPT-3 CSV with published failure windows) and `swat` (the normal/attack schema in either CSV mirrors or the official SWaT Excel workbooks).
 
 ```text
 timestamp,pressure,temperature,vibration,label
@@ -30,7 +30,8 @@ industrial-alerts run data/telemetry.csv --timestamp-column timestamp --label-co
   --run-id swat-v1 --artifacts-dir artifacts --alpha 0.01 --max-gap-steps 3 --min-event-points 2
 
 industrial-alerts run 'MetroPT3(AirCompressor).csv' --dataset metropt_raw --run-id metropt-v1
-industrial-alerts run attack.csv --reference normal.csv --dataset swat --run-id swat-v1
+industrial-alerts run SWaT_Dataset_Attack_v0.xlsx \
+  --reference SWaT_Dataset_Normal_v1.xlsx --dataset swat --run-id swat-v1
 ```
 
 The runner is resumable. Re-run the exact command with `--resume`; completed stages with a matching input fingerprint and configuration are reused. Each run writes a portable artifact directory:
@@ -46,7 +47,7 @@ artifacts/swat-v1/
 
 ## Kaggle
 
-Attach the public MetroPT-3 and SWaT Kaggle datasets, clone this repository, and run:
+Attach MetroPT-3 plus a Kaggle dataset you create from the official SWaT A1/A2 file pair, clone this repository, and run:
 
 ```bash
 pip install -e /kaggle/input/industrial-alert-calibration
@@ -55,8 +56,8 @@ python /kaggle/input/industrial-alert-calibration/kaggle/run_kaggle.py \
   --dataset metropt_raw --run-id metropt-conformal-v2
 
 python /kaggle/input/industrial-alert-calibration/kaggle/run_kaggle.py \
-  --input /kaggle/input/swat-dataset-secure-water-treatment-system/attack.csv \
-  --reference /kaggle/input/swat-dataset-secure-water-treatment-system/normal.csv \
+  --input /kaggle/input/swat-a1-a2-physical/SWaT_Dataset_Attack_v0.xlsx \
+  --reference /kaggle/input/swat-a1-a2-physical/SWaT_Dataset_Normal_v1.xlsx \
   --dataset swat --run-id swat-conformal-v2
 ```
 
@@ -66,6 +67,6 @@ The script writes to `/kaggle/working/artifacts/<run-id>`. Publish that director
 
 The initial `baseline_fraction` fits robust feature centers and scales. The following chronological segment up to `calibration_fraction` forms the label-free conformal calibration distribution. With one input, the remaining chronology is evaluation-only. With `--reference`, the reference file supplies baseline and calibration only, and the input file is wholly evaluation-only; its labels never influence fitting, calibration, or threshold selection. The conformal p-value is the finite-sample upper-tail rank of a score against the frozen calibration distribution. A p-value at or below `alpha` becomes a point alert.
 
-The SWaT adapter strips source column whitespace, parses its day-first timestamps, orders records by time, and removes duplicate timestamps before splitting. Its public `attack.csv` is an attack-only extraction, so timestamp gaps delimit separate known attack intervals during event scoring.
+For the defensible SWaT experiment, use the iTrust A1/A2 December 2015 release: `Normal_v1` is strictly baseline/calibration data; `Attack_v0` is wholly evaluation data and retains both normal and attack-labelled periods. The adapter accepts the official `.xlsx` files, drops their unit-identification row, canonicalizes known whitespace variants such as `A ttack`, parses day-first timestamps, orders records by time, and removes duplicate timestamps. It reports event precision/recall, false-alert events per calendar day of evaluation, and median incident detection delay. Do not use an attack-only mirror to claim false-alert rates or operational alert reduction.
 
 This is a reproducible research pipeline, not a claim that it diagnoses root cause or is production-ready. Use known incident windows and domain review before operational deployment.

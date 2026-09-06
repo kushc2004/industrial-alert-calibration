@@ -64,9 +64,12 @@ def incidents_to_frame(incidents: list[Incident], timestamps: pd.Series) -> pd.D
     )
 
 
-def evaluate_events(predicted: list[Incident], actual: list[Incident]) -> dict[str, float | int | None]:
+def evaluate_events(
+    predicted: list[Incident], actual: list[Incident], timestamps: pd.Series | None = None
+) -> dict[str, float | int | None]:
     matched_actual: set[int] = set()
     delays: list[int] = []
+    delay_seconds: list[float] = []
     matched_predicted = 0
     for alert in predicted:
         overlaps = [idx for idx, truth in enumerate(actual) if alert.start <= truth.end and alert.end >= truth.start]
@@ -75,11 +78,16 @@ def evaluate_events(predicted: list[Incident], actual: list[Incident]) -> dict[s
             idx = overlaps[0]
             matched_actual.add(idx)
             delays.append(max(0, alert.start - actual[idx].start))
+            if timestamps is not None:
+                delay_seconds.append(
+                    max(0.0, (timestamps.iloc[alert.start] - timestamps.iloc[actual[idx].start]).total_seconds())
+                )
     precision = matched_predicted / len(predicted) if predicted else 0.0
     recall = len(matched_actual) / len(actual) if actual else 0.0
     return {
         "predicted_events": len(predicted), "actual_events": len(actual), "matched_events": len(matched_actual),
         "event_precision": precision, "event_recall": recall,
         "mean_detection_delay_steps": float(np.mean(delays)) if delays else None,
+        "median_detection_delay_seconds": float(np.median(delay_seconds)) if delay_seconds else None,
         "false_alert_events": len(predicted) - matched_predicted,
     }

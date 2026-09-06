@@ -8,8 +8,7 @@
   "enable_gpu": true,
   "enable_internet": true,
   "dataset_sources": [
-    "joebeachcapital/metropt-3-dataset",
-    "vishala28/swat-dataset-secure-water-treatment-system"
+    "joebeachcapital/metropt-3-dataset"
   ],
   "competition_sources": [],
   "kernel_sources": []
