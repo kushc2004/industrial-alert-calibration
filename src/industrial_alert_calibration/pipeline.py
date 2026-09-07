@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import hashlib
+import importlib.metadata
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +12,7 @@ from .artifacts import file_sha256, read_json, write_json
 from .calibration import conformal_p_values
 from .datasets import DatasetPreset, load_dataset
 from .events import evaluate_events, group_positive_runs, incidents_to_frame
-from .scoring import robust_multivariate_score
+from .scoring import robust_multivariate_score, isolation_forest_score
 
 
 @dataclass(frozen=True)
@@ -21,6 +23,7 @@ class PipelineConfig:
     timestamp_column: str = "timestamp"
     label_column: str | None = "label"
     score_column: str | None = None
+    detector: str = "robust"
     baseline_fraction: float = 0.20
     calibration_fraction: float = 0.30
     alpha: float = 0.01
@@ -44,6 +47,8 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     fingerprint = file_sha256(source)
     reference_fingerprint = file_sha256(reference_source) if reference_source else None
     config_dict = asdict(config) | {
+        "implementation_sha256": hashlib.sha256(b"".join(
+            p.read_bytes() for p in sorted(Path(__file__).parent.glob("*.py")))).hexdigest(),
         "input_path": source.name,
         "reference_path": reference_source.name if reference_source else None,
         "artifacts_dir": Path(config.artifacts_dir).name,
@@ -60,6 +65,10 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
 
     write_json(manifest_path, {"status": "running", "input_sha256": fingerprint,
                                "reference_sha256": reference_fingerprint, "config": config_dict})
+    write_json(run_dir / "environment.json", {
+        name: importlib.metadata.version(name)
+        for name in ["numpy", "pandas", "scikit-learn", "joblib", "pyarrow"]
+    })
     evaluation_frame = load_dataset(source, config.dataset).reset_index(drop=True)
     reference_frame = (load_dataset(reference_source, config.dataset).reset_index(drop=True)
                        if reference_source else evaluation_frame)
@@ -91,8 +100,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     if not features:
         raise ValueError("no shared numeric features available for scoring")
     scoring_frame = pd.concat([reference_frame, evaluation_frame], ignore_index=True) if reference_source else reference_frame
-    scores = (scoring_frame[config.score_column].astype(float) if config.score_column
-              else robust_multivariate_score(scoring_frame, features, baseline_end))
+    if config.score_column:
+        scores = scoring_frame[config.score_column].astype(float)
+    elif config.detector == "robust":
+        scores = robust_multivariate_score(scoring_frame, features, baseline_end)
+    elif config.detector == "isolation_forest":
+        scores = isolation_forest_score(scoring_frame, features, baseline_end, run_dir / "model.joblib")
+    else:
+        raise ValueError(f"unknown detector: {config.detector}")
     p_values = conformal_p_values(scores, scores.iloc[baseline_end:calibration_end])
     output = pd.DataFrame({"timestamp": scoring_frame[config.timestamp_column], "score": scores, "p_value": p_values})
     output["split"] = "evaluation"
@@ -122,9 +137,17 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                                "evaluation_alert_rate": float(evaluation["point_alert"].mean())}
     if "label" in output:
         actual = group_positive_runs(
-            evaluation["label"].astype(bool), config.max_gap_steps, 1, evaluation["timestamp"]
+            evaluation["label"].astype(bool), 0, 1, evaluation["timestamp"]
         )
         metrics |= evaluate_events(predicted, actual, evaluation["timestamp"])
+        from sklearn.metrics import average_precision_score, roc_auc_score
+        labels = evaluation["label"]
+        if labels.nunique() == 2:
+            metrics["point_average_precision"] = float(average_precision_score(labels, evaluation["score"]))
+            metrics["point_roc_auc"] = float(roc_auc_score(labels, evaluation["score"]))
+        for value, name in [(0, "normal_false_positive_rate"), (1, "attack_point_recall")]:
+            selected = evaluation.loc[labels.eq(value), "point_alert"]
+            metrics[name] = float(selected.mean()) if len(selected) else None
         elapsed_seconds = (evaluation["timestamp"].iloc[-1] - evaluation["timestamp"].iloc[0]).total_seconds()
         if elapsed_seconds > 0:
             metrics["evaluation_duration_days"] = elapsed_seconds / 86_400

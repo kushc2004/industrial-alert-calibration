@@ -68,3 +68,26 @@ The initial `baseline_fraction` fits robust feature centers and scales. The foll
 For the public SWaT experiment, use this mirror's `merged.csv`, not `attack.csv` alone: it contains normal and attack-labelled telemetry, so the held-out portion supports false-alert events per calendar day as well as event precision/recall and median incident detection delay. The adapter canonicalizes whitespace variants such as `A ttack`, parses day-first timestamps, orders records by time, removes duplicate timestamps, and rejects a run if an attack-labelled row enters its baseline or calibration segment. `normal.csv` plus `attack.csv` remains useful for a separate-reference experiment, but `attack.csv` alone cannot support a false-alert-rate claim.
 
 This is a reproducible research pipeline, not a claim that it diagnoses root cause or is production-ready. Use known incident windows and domain review before operational deployment.
+# Detector comparison v3
+
+The Kaggle benchmark compares a robust-distance baseline with a trained
+Isolation Forest (200 trees, seed 42, 1,024 samples/tree). Both use identical
+chronological baseline/calibration/evaluation splits and alpha=0.01. No attack
+labels select model parameters or thresholds. Missing values use baseline-only
+medians; fitted trees and preprocessing are saved in `model.joblib`.
+
+Event overlap recall is NOT new-alarm recall. `onset_event_recall` requires a
+new alarm starting during the labelled incident; delays are reported once per
+detected incident and exclude alarms already active before it. Always report
+normal-point false-positive rate alongside recall: a continuously active alarm
+can obtain high overlap recall without being useful. Ground-truth events are
+not merged using the predicted-alarm gap tolerance.
+
+Version 2 results used an incorrect first-overlap-only event matcher. Do not
+compare those event metrics directly with version 3. Prior test results have
+already been inspected; this is an exploratory benchmark, not an untouched
+confirmatory evaluation. Temporal dependence and distribution shifts mean
+nominal conformal alpha does not guarantee the observed false-positive rate.
+Resume checks include source-code fingerprints. Each completed detector run
+is saved separately; cross-session recovery requires restoring its artifact
+folder before running the notebook. A failed partial detector run is recomputed.
