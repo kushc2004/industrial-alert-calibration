@@ -58,3 +58,18 @@ normal-point alert occupancy and onset recall. It is a negative benchmark
 result, not evidence for a CV performance claim. The full v9 comparison CSV,
 per-run score artifacts, calibration candidates, and provenance are preserved
 in the public Kaggle output.
+
+## Supervised historical-incident benchmark (Kaggle version 10)
+
+The separate supervised experiment also does **not** earn a performance claim.
+A HistGradientBoosting classifier was trained only on earlier labelled SWaT
+history; the final 11 complete incidents were kept untouched for chronological
+test. The threshold and a 30-sample persistence policy were selected using
+normal rows before that test boundary. It produced zero false alert events per
+observed day and 0.071% normal-time alert occupancy, but generated a new alarm
+for only 2/11 later incidents (18.2% onset recall; 8.96% attack-point recall).
+
+The low false-alert rate is therefore not sufficient: known early incident
+signatures did not transfer reliably to the later incidents. This is retained
+as a reproducible negative result, not a CV performance claim and not evidence
+of novel-anomaly detection.
