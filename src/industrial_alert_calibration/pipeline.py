@@ -12,7 +12,8 @@ from .artifacts import file_sha256, read_json, write_json
 from .calibration import conformal_p_values
 from .datasets import DatasetPreset, load_dataset
 from .events import evaluate_events, group_positive_runs, incidents_to_frame, ground_truth_events
-from .scoring import robust_multivariate_score, isolation_forest_score, temporal_residual_score
+from .scoring import (robust_multivariate_score, isolation_forest_score, temporal_residual_score,
+                       temporal_tcn_score)
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,8 @@ class PipelineConfig:
     run_id: str = "default"
     artifacts_dir: str = "artifacts"
     resume: bool = False
+    temporal_window: int = 60
+    temporal_epochs: int = 12
 
 
 def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
@@ -108,6 +111,9 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         scores = isolation_forest_score(scoring_frame, features, baseline_end, run_dir / "model.joblib")
     elif config.detector == "temporal_ridge":
         scores = temporal_residual_score(scoring_frame, features, baseline_end, run_dir / "model.joblib")
+    elif config.detector == "temporal_tcn":
+        scores = temporal_tcn_score(scoring_frame, features, baseline_end, run_dir / "model.joblib",
+                                    window_size=config.temporal_window, epochs=config.temporal_epochs)
     else:
         raise ValueError(f"unknown detector: {config.detector}")
     p_values = conformal_p_values(scores, scores.iloc[baseline_end:calibration_end])

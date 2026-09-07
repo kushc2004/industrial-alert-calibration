@@ -4,6 +4,11 @@ A standalone, public implementation for turning multivariate industrial telemetr
 
 The pipeline uses a chronological baseline to fit robust per-sensor statistics, converts deviations to a multivariate anomaly score, applies split-conformal calibration, groups point alerts into incidents, and evaluates both point and event-level performance.
 
+The optional `temporal_tcn` detector instead uses only past sensor windows to
+forecast the next multivariate reading. It is fitted solely on normal baseline
+telemetry and scores the resulting prediction residual; labels remain post-hoc
+evaluation data.
+
 ## Why this exists
 
 Raw anomaly scores create alert floods. This project makes the operational layer explicit:

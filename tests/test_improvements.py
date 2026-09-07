@@ -42,3 +42,17 @@ def test_temporal_residual_saved_and_future_independent(tmp_path):
     second = temporal_residual_score(frame, list(frame.columns), 50, tmp_path / "second.joblib")
     np.testing.assert_array_equal(first.iloc[:80], second.iloc[:80])
     assert (tmp_path / "first.joblib").exists()
+
+
+def test_temporal_tcn_saved_and_future_independent(tmp_path):
+    import pytest
+    pytest.importorskip("torch")
+    from industrial_alert_calibration.scoring import temporal_tcn_score
+    frame = pd.DataFrame(np.random.default_rng(9).normal(size=(100, 3)))
+    first = temporal_tcn_score(frame, list(frame.columns), 70, tmp_path / "first.joblib",
+                               window_size=20, epochs=1, batch_size=32)
+    frame.iloc[85:] = 1000
+    second = temporal_tcn_score(frame, list(frame.columns), 70, tmp_path / "second.joblib",
+                                window_size=20, epochs=1, batch_size=32)
+    np.testing.assert_allclose(first.iloc[:85], second.iloc[:85], rtol=1e-6, atol=1e-6)
+    assert (tmp_path / "first.joblib").exists()
