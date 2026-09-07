@@ -41,3 +41,20 @@ false events per observed day and detected 3/4 new-alarm windows. The model is
 therefore not a cross-dataset solution. All six detector-dataset combinations
 were executed in public Kaggle kernel version 7; the comparison artifact is
 preserved with that run.
+
+## Causal TCN benchmark (Kaggle version 9)
+
+The normal-only causal TCN experiment does **not** pass the operational
+criterion. Its normal-calibrated 30-sample policy appears to overlap all 35/35
+SWaT incidents and reports only 0.261 false *events* per observed day, but
+that event count masks a pathological long-running alarm: 65.00% of normal
+evaluation timestamps are alerted and no incident receives a new alarm after
+its labelled-window start (0/35 onset recall). The model is therefore already
+alarming through normal portions of the evaluation window; it is not an
+early-warning detector.
+
+This result is retained to demonstrate why event counts must be read alongside
+normal-point alert occupancy and onset recall. It is a negative benchmark
+result, not evidence for a CV performance claim. The full v9 comparison CSV,
+per-run score artifacts, calibration candidates, and provenance are preserved
+in the public Kaggle output.
