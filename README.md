@@ -91,3 +91,37 @@ nominal conformal alpha does not guarantee the observed false-positive rate.
 Resume checks include source-code fingerprints. Each completed detector run
 is saved separately; cross-session recovery requires restoring its artifact
 folder before running the notebook. A failed partial detector run is recomputed.
+
+## Corrected evaluation v4
+
+Re-evaluate saved model scores without retraining:
+
+```bash
+python -m industrial_alert_calibration.reevaluate artifacts/previous-runs artifacts/corrected-v4
+```
+
+MetroPT ground truth now uses one incident per published failure window, rather
+than fragmenting windows at sampling gaps. **The v3 MetroPT event counts and
+event recalls are superseded.** SWaT retains label runs separated by normal
+samples or substantial timestamp gaps.
+
+The normal calibration segment is divided chronologically: its first half
+freezes the score threshold (alpha=0.01); its second half selects the shortest
+consecutive-exceedance persistence from 1, 3, 10, 30, or 60 samples meeting both
+one false event per observed day and 1% normal alarm occupancy. If none qualifies,
+60 samples is a flagged fallback, not a successful calibration. Evaluation labels
+do not select this policy. This normal-only selection does not guarantee useful
+attack recall or a held-out false-alarm budget under distribution shift.
+
+Unfiltered and persistence policies use the same frozen threshold. Persistence
+starts at confirmation, never retroactively at the first exceedance, and resets
+across missing stretches. Rates use estimated observed telemetry exposure
+(timestamp increments capped at the median cadence), not missing calendar time.
+Delay references the first observed sample in each labelled window and is
+reported only for incidents with a new alarm; it is not advance warning of failure.
+Outputs include calibration candidates, the budget-met flag, ground-truth and
+predicted incidents, evaluation scores, and source checksums. The Kaggle comparison
+runner writes v4 runs and the corrected policy comparison automatically.
+
+Because earlier evaluation outcomes informed this protocol correction, results
+remain exploratory. Do not present them as an untouched confirmatory test.

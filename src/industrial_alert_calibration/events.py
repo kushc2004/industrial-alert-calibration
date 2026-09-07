@@ -33,7 +33,7 @@ def group_positive_runs(
         if not cadence.empty:
             # A low quantile recovers the nominal cadence even when this file
             # already omits long normal stretches between labelled incidents.
-            max_time_gap = cadence.quantile(0.10) * (max_gap_steps + 1)
+            max_time_gap = cadence.quantile(0.10) * (max_gap_steps + 1) * 1.5
     incidents: list[Incident] = []
     start = previous = int(positive[0])
     count = 1
@@ -51,6 +51,33 @@ def group_positive_runs(
     if count >= min_points:
         incidents.append(Incident(start, previous))
     return incidents
+
+
+def ground_truth_events(frame: pd.DataFrame, dataset: str) -> list[Incident]:
+    """Keep published MetroPT windows intact, independent of sampling gaps."""
+    if dataset == "metropt_raw":
+        from .datasets import METROPT_FAILURE_WINDOWS
+        events = []
+        for start, end in METROPT_FAILURE_WINDOWS:
+            positions = np.flatnonzero(frame["timestamp"].between(
+                pd.Timestamp(start, tz="UTC"), pd.Timestamp(end, tz="UTC")))
+            if len(positions):
+                events.append(Incident(int(positions[0]), int(positions[-1])))
+        return events
+    return group_positive_runs(frame["label"].astype(bool), 0, 1, frame["timestamp"])
+
+
+def persistent_alerts(values: pd.Series, timestamps: pd.Series, points: int) -> pd.Series:
+    """Causal consecutive exceedances; trigger at confirmation, never backdate."""
+    if points < 1:
+        raise ValueError("points must be positive")
+    values = values.reset_index(drop=True).astype(bool)
+    delta = timestamps.reset_index(drop=True).diff().dt.total_seconds()
+    cadence = delta[delta > 0].median()
+    reset = (~values) | delta.gt(1.5 * cadence)
+    groups = reset.cumsum()
+    counts = values.astype(int).groupby(groups).cumsum()
+    return values & counts.ge(points)
 
 
 def incidents_to_frame(incidents: list[Incident], timestamps: pd.Series) -> pd.DataFrame:

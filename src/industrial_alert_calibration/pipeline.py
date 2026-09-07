@@ -11,7 +11,7 @@ import pandas as pd
 from .artifacts import file_sha256, read_json, write_json
 from .calibration import conformal_p_values
 from .datasets import DatasetPreset, load_dataset
-from .events import evaluate_events, group_positive_runs, incidents_to_frame
+from .events import evaluate_events, group_positive_runs, incidents_to_frame, ground_truth_events
 from .scoring import robust_multivariate_score, isolation_forest_score
 
 
@@ -136,9 +136,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                                "evaluation_point_alerts": int(evaluation["point_alert"].sum()),
                                "evaluation_alert_rate": float(evaluation["point_alert"].mean())}
     if "label" in output:
-        actual = group_positive_runs(
-            evaluation["label"].astype(bool), 0, 1, evaluation["timestamp"]
-        )
+        actual = ground_truth_events(evaluation, config.dataset)
         metrics |= evaluate_events(predicted, actual, evaluation["timestamp"])
         from sklearn.metrics import average_precision_score, roc_auc_score
         labels = evaluation["label"]
