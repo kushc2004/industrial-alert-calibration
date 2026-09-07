@@ -15,7 +15,7 @@ def main() -> None:
     parser.add_argument("--timestamp-column", default="timestamp")
     parser.add_argument("--label-column", default="label")
     parser.add_argument("--score-column")
-    parser.add_argument("--detector", choices=["robust", "isolation_forest"], default="robust")
+    parser.add_argument("--detector", choices=["robust", "isolation_forest", "temporal_ridge"], default="robust")
     parser.add_argument("--baseline-fraction", type=float, default=0.20)
     parser.add_argument("--calibration-fraction", type=float, default=0.30)
     parser.add_argument("--alpha", type=float, default=0.01)

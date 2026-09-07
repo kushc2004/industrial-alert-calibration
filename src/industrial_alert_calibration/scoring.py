@@ -36,3 +36,31 @@ def isolation_forest_score(frame, feature_columns, baseline_end, model_path):
     scores = np.concatenate([-model.score_samples(values[i:i + 50000])
                              for i in range(0, len(values), 50000)])
     return pd.Series(scores, index=frame.index, name="score")
+
+
+def temporal_residual_score(frame, feature_columns, baseline_end, model_path):
+    """Score one-step multivariate prediction residuals using only normal history."""
+    import joblib
+    from sklearn.linear_model import Ridge
+
+    values = frame[feature_columns].astype(float).replace([np.inf, -np.inf], np.nan)
+    medians = values.iloc[:baseline_end].median().fillna(0)
+    values = values.fillna(medians)
+    means = values.iloc[:baseline_end].mean()
+    scales = values.iloc[:baseline_end].std(ddof=0).replace(0, 1).fillna(1)
+    standardized = ((values - means) / scales).to_numpy(dtype=np.float32)
+    model = Ridge(alpha=1.0)
+    model.fit(standardized[:baseline_end - 1], standardized[1:baseline_end])
+    predicted = model.predict(standardized[:-1])
+    residuals = standardized[1:] - predicted
+    baseline_residuals = residuals[:baseline_end - 1]
+    residual_center = np.median(baseline_residuals, axis=0)
+    residual_scale = 1.4826 * np.median(np.abs(baseline_residuals - residual_center), axis=0)
+    residual_scale = np.where(residual_scale > 0, residual_scale, np.std(baseline_residuals, axis=0))
+    residual_scale = np.where(residual_scale > 0, residual_scale, 1.0)
+    scores = np.zeros(len(frame), dtype=np.float64)
+    scores[1:] = np.sqrt(np.mean(((residuals - residual_center) / residual_scale) ** 2, axis=1))
+    joblib.dump({"model": model, "features": feature_columns, "medians": medians,
+                 "means": means, "scales": scales, "residual_center": residual_center,
+                 "residual_scale": residual_scale}, model_path)
+    return pd.Series(scores, index=frame.index, name="score")

@@ -13,7 +13,7 @@ DATASETS = {
 }
 rows = []
 for dataset, path in DATASETS.items():
-    for detector in ['robust', 'isolation_forest']:
+    for detector in ['robust', 'isolation_forest', 'temporal_ridge']:
         name = f'{dataset}-{detector}-v4'
         print(f'Starting {name}', flush=True)
         metrics = run_pipeline(PipelineConfig(

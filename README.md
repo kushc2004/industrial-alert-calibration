@@ -125,3 +125,8 @@ runner writes v4 runs and the corrected policy comparison automatically.
 
 Because earlier evaluation outcomes informed this protocol correction, results
 remain exploratory. Do not present them as an untouched confirmatory test.
+
+The next benchmark adds a temporal Ridge residual detector. It predicts the
+full sensor vector from the immediately preceding vector and scores robustly
+standardized prediction residuals. It is fit only on normal baseline data, so it
+tests temporal multivariate behavior rather than re-running the pointwise model.

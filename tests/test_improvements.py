@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from industrial_alert_calibration.events import Incident, evaluate_events
-from industrial_alert_calibration.scoring import robust_multivariate_score, isolation_forest_score
+from industrial_alert_calibration.scoring import robust_multivariate_score, isolation_forest_score, temporal_residual_score
 
 
 def test_persistent_alarm_is_not_new_detection():
@@ -31,5 +31,14 @@ def test_forest_saved_and_future_independent(tmp_path):
     first = isolation_forest_score(frame, list(frame.columns), 50, tmp_path / "first.joblib")
     frame.iloc[80:] = 1000
     second = isolation_forest_score(frame, list(frame.columns), 50, tmp_path / "second.joblib")
+    np.testing.assert_array_equal(first.iloc[:80], second.iloc[:80])
+    assert (tmp_path / "first.joblib").exists()
+
+
+def test_temporal_residual_saved_and_future_independent(tmp_path):
+    frame = pd.DataFrame(np.random.default_rng(7).normal(size=(100, 3)))
+    first = temporal_residual_score(frame, list(frame.columns), 50, tmp_path / "first.joblib")
+    frame.iloc[80:] = 1000
+    second = temporal_residual_score(frame, list(frame.columns), 50, tmp_path / "second.joblib")
     np.testing.assert_array_equal(first.iloc[:80], second.iloc[:80])
     assert (tmp_path / "first.joblib").exists()
