@@ -117,9 +117,22 @@ def temporal_tcn_score(frame, feature_columns, baseline_end, model_path,
         raise ValueError("baseline must contain at least window_size + 11 rows for temporal_tcn")
 
     torch.manual_seed(42)
+    device = torch.device("cpu")
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(42)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Some hosted images expose a CUDA device although their PyTorch binary
+        # lacks a kernel for that GPU. Probe a real convolution before training.
+        try:
+            probe = torch.nn.Conv1d(1, 1, 3).to("cuda")
+            probe(torch.zeros((1, 1, 4), device="cuda"))
+            torch.cuda.synchronize()
+            torch.cuda.manual_seed_all(42)
+            device = torch.device("cuda")
+        except Exception:
+            # CPU is slower but produces the same deterministic model artifact.
+            try:
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
     values = frame[feature_columns].astype(float).replace([np.inf, -np.inf], np.nan)
     medians = values.iloc[:baseline_end].median().fillna(0)
     values = values.fillna(medians)
