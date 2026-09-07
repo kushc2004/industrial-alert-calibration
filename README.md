@@ -135,3 +135,18 @@ The next benchmark adds a temporal Ridge residual detector. It predicts the
 full sensor vector from the immediately preceding vector and scores robustly
 standardized prediction residuals. It is fit only on normal baseline data, so it
 tests temporal multivariate behavior rather than re-running the pointwise model.
+
+## Separate supervised historical-incident benchmark
+
+`kaggle/supervised_swat_benchmark.py` is intentionally **not** part of the
+label-free comparison. It trains a HistGradientBoosting classifier using only
+the early labelled SWaT history, reserves the last 30% of complete labelled
+incidents for a single chronological test, and selects its threshold and
+persistence from normal rows before the test boundary. The saved test scores,
+ground truth, model, and metrics make the split auditable.
+
+This experiment answers a narrower operational question: whether signatures of
+known historical incidents transfer to later incidents. It cannot support a
+claim of novel-attack detection, root-cause diagnosis, or general anomaly
+detection. Report incident/onset recall together with normal-time alert
+occupancy and false alert events per observed day.
