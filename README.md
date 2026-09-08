@@ -201,3 +201,38 @@ general anomaly detection. Report new-onset incident recall together with
 normal-time alert occupancy, false alert events per observed day, and the
 unfiltered same-threshold baseline. If the selection gate fails, it is a
 negative result, not a CV performance claim.
+
+## Long-horizon TSFM replay on SWaT
+
+`kaggle/long_swat_tsfm_replay.py` produces a longer, auditable replay from the
+public normal-plus-attack SWaT release. It aggregates readings to five-minute
+intervals, preserves an interval's attack label whenever any constituent row is
+attacked, and fits score scaling only on the initial known-healthy 20% of the
+chronology. It then writes five aligned score streams and evaluates all of them
+on the same untouched final 30% of complete attack episodes.
+
+The model runtime and checkpoints are intentionally separate from this public
+repository. Mount them as a private Kaggle dataset with this layout:
+
+```text
+private-tsfm-runtime/
+  kaggle_private/run_tsfm_scores.py
+  src/...
+  checkpoints/MOMENT-1-small/
+  checkpoints/GTT-1.7/GTT-1.7.pt
+```
+
+With the public SWaT dataset and that private dataset attached to a GPU Kaggle
+notebook, run:
+
+```bash
+pip install -e .
+python kaggle/long_swat_tsfm_replay.py \
+  --swat-input /kaggle/input/swat-dataset-secure-water-treatment-system/merged.csv \
+  --private-runner /kaggle/input/private-tsfm-runtime/kaggle_private/run_tsfm_scores.py \
+  --resume
+```
+
+The run folder is resumable: completed score files are reused. Preserve its
+`preparation.json`, score manifest, and `replay/metrics.json`; only measured
+held-out results from these artifacts should be used in a CV claim.
