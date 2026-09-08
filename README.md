@@ -96,6 +96,21 @@ but cannot be declared the winner. Raw score files and result artifacts stay
 outside this repository; attach them as a Kaggle input or publish them as a
 separately versioned artifact dataset only when their licence permits it.
 
+Generate three transparent classical score streams before replaying them. The
+PCA reconstruction and Isolation Forest models fit only normal-labelled rows
+before the frozen test boundary; the rolling z-score uses only prior telemetry
+at every timestamp.
+
+```bash
+industrial-classical-scores --input merged.csv \
+  --fit-before '2015-12-31T22:06:00Z' --output artifacts/classical-scores
+```
+
+Then append `--score pca_reconstruction=...`, `--score isolation_forest=...`,
+and `--score robust_rolling_zscore=...` to the replay command. The precise
+boundary must be recorded from the initial five-configuration replay rather
+than selected after inspecting classical-baseline results.
+
 ## Method and validation boundary
 
 The initial `baseline_fraction` fits robust feature centers and scales. The following chronological segment up to `calibration_fraction` forms the label-free conformal calibration distribution. With one input, the remaining chronology is evaluation-only. With `--reference`, the reference file supplies baseline and calibration only, and the input file is wholly evaluation-only; its labels never influence fitting, calibration, or threshold selection. When labels are present, the runner asserts that the baseline and calibration rows are all normal before fitting. The conformal p-value is the finite-sample upper-tail rank of a score against the frozen calibration distribution. A p-value at or below `alpha` becomes a point alert.
