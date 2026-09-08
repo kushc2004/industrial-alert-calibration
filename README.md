@@ -236,3 +236,11 @@ python kaggle/long_swat_tsfm_replay.py \
 The run folder is resumable: completed score files are reused. Preserve its
 `preparation.json`, score manifest, and `replay/metrics.json`; only measured
 held-out results from these artifacts should be used in a CV claim.
+
+For failure resilience across Kaggle sessions, run configurations in small
+groups (for example, the two MOMENT configurations), save the notebook output
+as a private artifact dataset, then attach that artifact dataset to the next
+session. Pass its `long-swat-replay` directory through `--artifact-cache`; the
+runner restores valid completed score files and only computes the requested
+missing configurations. A complete five-score cache triggers the replay
+automatically.
