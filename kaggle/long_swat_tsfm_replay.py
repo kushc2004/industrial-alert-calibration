@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 from industrial_alert_calibration.operational_replay import main as replay_main
 from industrial_alert_calibration.swat_preparation import write_prepared_swat
 
@@ -48,10 +50,50 @@ def _restore_artifacts(cache_dir: Path, run_dir: Path) -> None:
                 shutil.copy2(source, destination)
 
 
+def _preflight_baseline(prepared_path: Path, baseline_fraction: float, minimum_rows: int) -> dict[str, int | float | bool]:
+    """Validate that the common healthy calibration prefix supports all methods.
+
+    MOMENT's forecast scores require a 512-step context.  Calibration must use
+    only scores after that context, hence the strict ``> 512`` requirement.
+    Keeping this check here avoids starting any private model process when a
+    public-data/cadence choice cannot support the requested protocol.
+    """
+    frame = pd.read_parquet(prepared_path, columns=["label"])
+    if not 0.0 < baseline_fraction < 1.0:
+        raise ValueError("--baseline-fraction must be strictly between 0 and 1")
+    baseline_rows = int(len(frame) * baseline_fraction)
+    attacked = frame["label"].to_numpy().nonzero()[0]
+    healthy_prefix_rows = int(attacked[0]) if len(attacked) else len(frame)
+    report: dict[str, int | float | bool] = {
+        "prepared_rows": len(frame),
+        "baseline_fraction": baseline_fraction,
+        "baseline_rows": baseline_rows,
+        "healthy_prefix_rows": healthy_prefix_rows,
+        "minimum_baseline_rows": minimum_rows,
+        "baseline_is_healthy": baseline_rows <= healthy_prefix_rows,
+    }
+    if baseline_rows <= minimum_rows:
+        raise ValueError(
+            "Baseline preflight failed: "
+            f"{baseline_rows} calibration rows at this cadence, but MOMENT needs more than "
+            f"{minimum_rows}. Use a finer --cadence only if the raw release has higher "
+            "temporal resolution, or use a longer known-healthy telemetry period."
+        )
+    if baseline_rows > healthy_prefix_rows:
+        raise ValueError(
+            "Baseline preflight failed: the requested calibration prefix includes labelled attacks "
+            f"(baseline rows={baseline_rows}, known healthy prefix={healthy_prefix_rows})."
+        )
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a chronological SWaT TSFM operational replay.")
     parser.add_argument("--swat-input", required=True, help="Public SWaT normal+attack or merged CSV/XLSX")
     parser.add_argument("--private-runner", required=True, help="Mounted private model-runtime score runner")
+    parser.add_argument("--private-source-root", help="Private input directory containing the model runtime source.")
+    parser.add_argument("--moment-checkpoint", help="Private mounted MOMENT checkpoint directory.")
+    parser.add_argument("--gtt-checkpoint", help="Private mounted GTT checkpoint file.")
     parser.add_argument("--run-dir", default="/kaggle/working/long-swat-replay")
     # Five-minute aggregation keeps the full normal+attack release tractable
     # for per-window forecasting while materially extending the observed span.
@@ -61,6 +103,8 @@ def main() -> None:
     parser.add_argument("--min-onset-recall", type=float, default=.50)
     parser.add_argument("--baseline-fraction", type=float, default=.20,
                         help="Initial known-healthy fraction used only to fit score scaling.")
+    parser.add_argument("--minimum-baseline-rows", type=int, default=512,
+                        help="Shared score warm-up requirement; retain 512 for MOMENT comparison.")
     parser.add_argument("--configs", nargs="+", choices=CONFIGURATIONS, default=list(CONFIGURATIONS),
                         help="Configurations to score in this invocation; enables checkpointed Kaggle runs.")
     parser.add_argument("--artifact-cache", help="Read-only prior long-swat-replay artifact directory to restore.")
@@ -77,9 +121,15 @@ def main() -> None:
 
     if not (args.resume and prepared_path.exists() and labels_path.exists()):
         metadata = write_prepared_swat(Path(args.swat_input), prepared_path, args.cadence)
-        import pandas as pd
         pd.read_parquet(prepared_path)[["Timestamp", "label"]].to_csv(labels_path, index=False)
         (run_dir / "preparation.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+    try:
+        preflight = _preflight_baseline(prepared_path, args.baseline_fraction, args.minimum_baseline_rows)
+    except ValueError as error:
+        (run_dir / "preflight.json").write_text(json.dumps({"status": "failed", "error": str(error)}, indent=2) + "\n", encoding="utf-8")
+        raise
+    (run_dir / "preflight.json").write_text(json.dumps({"status": "passed", **preflight}, indent=2) + "\n", encoding="utf-8")
 
     missing = [name for name in args.configs if not _valid_score(scores_dir / f"{name}.csv")]
     if missing:
@@ -88,6 +138,12 @@ def main() -> None:
             "--output-dir", str(scores_dir), "--baseline-fraction", str(args.baseline_fraction),
             "--configs", *missing,
         ]
+        if args.private_source_root:
+            command.extend(["--source-root", args.private_source_root])
+        if args.moment_checkpoint:
+            command.extend(["--moment-checkpoint", args.moment_checkpoint])
+        if args.gtt_checkpoint:
+            command.extend(["--gtt-checkpoint", args.gtt_checkpoint])
         if args.resume:
             command.append("--resume")
         subprocess.run(command, check=True)

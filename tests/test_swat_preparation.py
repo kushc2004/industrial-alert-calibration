@@ -1,5 +1,7 @@
 import pandas as pd
+import pytest
 
+from kaggle.long_swat_tsfm_replay import _preflight_baseline
 from industrial_alert_calibration.swat_preparation import prepare_minute_swat
 
 
@@ -31,3 +33,20 @@ def test_swat_preparation_deduplicates_timestamp_without_losing_attack_label(tmp
     ).to_csv(source, index=False)
     prepared, _ = prepare_minute_swat(source)
     assert prepared.label.tolist() == [1]
+
+
+def test_baseline_preflight_requires_healthy_rows_after_moment_context(tmp_path):
+    prepared = tmp_path / "prepared.parquet"
+    pd.DataFrame({"label": [0] * 600 + [1] * 10}).to_parquet(prepared)
+    report = _preflight_baseline(prepared, 0.9, 512)
+    assert report["baseline_rows"] == 549
+    assert report["healthy_prefix_rows"] == 600
+
+
+def test_baseline_preflight_rejects_contaminated_or_short_prefix(tmp_path):
+    prepared = tmp_path / "prepared.parquet"
+    pd.DataFrame({"label": [0] * 600 + [1] * 400}).to_parquet(prepared)
+    with pytest.raises(ValueError, match="includes labelled attacks"):
+        _preflight_baseline(prepared, 0.8, 512)
+    with pytest.raises(ValueError, match="MOMENT needs more than 512"):
+        _preflight_baseline(prepared, 0.2, 512)
