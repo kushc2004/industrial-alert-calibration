@@ -16,7 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from industrial_alert_calibration.operational_replay import main as replay_main
-from industrial_alert_calibration.swat_preparation import write_prepared_swat
+from industrial_alert_calibration.swat_preparation import write_prepared_swat, write_prepared_swat_sessions
 
 
 CONFIGURATIONS = (
@@ -89,7 +89,10 @@ def _preflight_baseline(prepared_path: Path, baseline_fraction: float, minimum_r
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a chronological SWaT TSFM operational replay.")
-    parser.add_argument("--swat-input", required=True, help="Public SWaT normal+attack or merged CSV/XLSX")
+    sources = parser.add_mutually_exclusive_group(required=True)
+    sources.add_argument("--swat-input", help="Single public SWaT CSV/XLSX; use only when its order is verified.")
+    sources.add_argument("--normal-input", help="Public SWaT normal-session CSV/XLSX; requires --attack-input.")
+    parser.add_argument("--attack-input", help="Public SWaT attack-session CSV/XLSX; requires --normal-input.")
     parser.add_argument("--private-runner", required=True, help="Mounted private model-runtime score runner")
     parser.add_argument("--private-source-root", help="Private input directory containing the model runtime source.")
     parser.add_argument("--moment-checkpoint", help="Private mounted MOMENT checkpoint directory.")
@@ -110,6 +113,8 @@ def main() -> None:
     parser.add_argument("--artifact-cache", help="Read-only prior long-swat-replay artifact directory to restore.")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
+    if bool(args.normal_input) != bool(args.attack_input):
+        parser.error("--normal-input and --attack-input must be supplied together")
 
     run_dir = Path(args.run_dir)
     scores_dir = run_dir / "scores"
@@ -120,7 +125,12 @@ def main() -> None:
         _restore_artifacts(Path(args.artifact_cache), run_dir)
 
     if not (args.resume and prepared_path.exists() and labels_path.exists()):
-        metadata = write_prepared_swat(Path(args.swat_input), prepared_path, args.cadence)
+        if args.normal_input:
+            metadata = write_prepared_swat_sessions(
+                Path(args.normal_input), Path(args.attack_input), prepared_path, args.cadence
+            )
+        else:
+            metadata = write_prepared_swat(Path(args.swat_input), prepared_path, args.cadence)
         pd.read_parquet(prepared_path)[["Timestamp", "label"]].to_csv(labels_path, index=False)
         (run_dir / "preparation.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 

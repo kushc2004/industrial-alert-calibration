@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from kaggle.long_swat_tsfm_replay import _preflight_baseline
-from industrial_alert_calibration.swat_preparation import prepare_minute_swat
+from industrial_alert_calibration.swat_preparation import prepare_minute_swat, prepare_minute_swat_sessions
 
 
 def test_swat_minute_preparation_preserves_an_attack_in_a_mixed_minute(tmp_path):
@@ -50,3 +50,19 @@ def test_baseline_preflight_rejects_contaminated_or_short_prefix(tmp_path):
         _preflight_baseline(prepared, 0.8, 512)
     with pytest.raises(ValueError, match="MOMENT needs more than 512"):
         _preflight_baseline(prepared, 0.2, 512)
+
+
+def test_separate_sessions_preserve_normal_then_attack_order(tmp_path):
+    normal = tmp_path / "normal.csv"
+    attack = tmp_path / "attack.csv"
+    pd.DataFrame({
+        "Timestamp": ["28/12/2015 10:00:00", "28/12/2015 10:01:00"],
+        "Normal/Attack": ["Normal", "Normal"], "LIT101": [1.0, 2.0],
+    }).to_csv(normal, index=False)
+    pd.DataFrame({
+        "Timestamp": ["29/12/2015 10:00:00", "29/12/2015 10:01:00"],
+        "Normal/Attack": ["Normal", "Attack"], "LIT101": [3.0, 4.0],
+    }).to_csv(attack, index=False)
+    prepared, metadata = prepare_minute_swat_sessions(normal, attack)
+    assert prepared.label.tolist() == [0, 0, 0, 1]
+    assert metadata["session_mode"] == "normal_then_attack"
