@@ -66,6 +66,36 @@ python /kaggle/input/industrial-alert-calibration/kaggle/run_kaggle.py \
 
 The script writes to `/kaggle/working/artifacts/<run-id>`. Publish that directory as the separate `industrial-alert-calibration-artifacts` Kaggle dataset after a successful run. Dataset versioning preserves partial/recovered outputs separately from source code.
 
+## Five-configuration operational replay
+
+When several anomaly configurations have already produced timestamped scores,
+evaluate their deployment policies fairly with the replay command. It aligns
+the label file and every score stream to their common timestamps, tunes each
+configuration's score threshold and causal confirmation duration on earlier
+labelled incidents only, then reserves the final 30% of complete incidents for
+one untouched test. Each configuration must meet the same predeclared
+validation gate: at least 50% new-onset incident recall and no more than one
+false alert event per observed day.
+
+```bash
+industrial-alert-replay \
+  --labels merged.csv --timestamp-column Timestamp --label-column label \
+  --score model_a_forecast=outputs/model_a_forecast.csv \
+  --score model_a_reconstruction=outputs/model_a_reconstruction.csv \
+  --score model_b_forecast=outputs/model_b_forecast.csv \
+  --score model_b_reconstruction=outputs/model_b_reconstruction.csv \
+  --score model_b_fewshot=outputs/model_b_fewshot.csv \
+  --output artifacts/five-configuration-replay
+```
+
+Every score CSV needs `Timestamp` and `Overall_AnomalyScore` columns. The
+resulting `comparison.csv` reports held-out incident recall, detection delay,
+false alerts per observed day, and whether the policy passed its *earlier*
+validation gate. A configuration that fails that gate is shown for diagnosis
+but cannot be declared the winner. Raw score files and result artifacts stay
+outside this repository; attach them as a Kaggle input or publish them as a
+separately versioned artifact dataset only when their licence permits it.
+
 ## Method and validation boundary
 
 The initial `baseline_fraction` fits robust feature centers and scales. The following chronological segment up to `calibration_fraction` forms the label-free conformal calibration distribution. With one input, the remaining chronology is evaluation-only. With `--reference`, the reference file supplies baseline and calibration only, and the input file is wholly evaluation-only; its labels never influence fitting, calibration, or threshold selection. When labels are present, the runner asserts that the baseline and calibration rows are all normal before fitting. The conformal p-value is the finite-sample upper-tail rank of a score against the frozen calibration distribution. A p-value at or below `alpha` becomes a point alert.

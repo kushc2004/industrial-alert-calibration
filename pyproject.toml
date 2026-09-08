@@ -15,6 +15,7 @@ temporal = ["torch>=2.2"]
 
 [project.scripts]
 industrial-alerts = "industrial_alert_calibration.cli:main"
+industrial-alert-replay = "industrial_alert_calibration.operational_replay:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
