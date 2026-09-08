@@ -9,7 +9,7 @@ from industrial_alert_calibration.datasets import load_dataset
 from industrial_alert_calibration.events import incidents_to_frame, group_positive_runs
 from industrial_alert_calibration.supervised import run_supervised_incident_benchmark
 
-ROOT = Path('/kaggle/working/artifacts/supervised-swat-v1')
+ROOT = Path('/kaggle/working/artifacts/supervised-swat-v2-event-aware')
 frame = load_dataset(Path('/kaggle/input/swat-dataset-secure-water-treatment-system/merged.csv'), 'swat')
 metrics, scores, model = run_supervised_incident_benchmark(frame)
 ROOT.mkdir(parents=True, exist_ok=True)

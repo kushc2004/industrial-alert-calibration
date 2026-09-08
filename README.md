@@ -141,12 +141,18 @@ tests temporal multivariate behavior rather than re-running the pointwise model.
 `kaggle/supervised_swat_benchmark.py` is intentionally **not** part of the
 label-free comparison. It trains a HistGradientBoosting classifier using only
 the early labelled SWaT history, reserves the last 30% of complete labelled
-incidents for a single chronological test, and selects its threshold and
-persistence from normal rows before the test boundary. The saved test scores,
-ground truth, model, and metrics make the split auditable.
+incidents for a single chronological test, and uses the intervening labelled
+history to choose an event-aware threshold/persistence policy. Selection has a
+predeclared gate: at least 50% new-onset incident recall and at most one false
+alert event per observed day. The final test labels are never used for fitting,
+policy selection, or threshold selection. The saved test scores, ground truth,
+model, candidates, and metrics make the split auditable.
 
 This experiment answers a narrower operational question: whether signatures of
-known historical incidents transfer to later incidents. It cannot support a
-claim of novel-attack detection, root-cause diagnosis, or general anomaly
-detection. Report incident/onset recall together with normal-time alert
-occupancy and false alert events per observed day.
+known historical incidents transfer to later incidents and whether an
+event-aware confirmation rule reduces alerts at the *same score cutoff*. It
+cannot support a claim of novel-attack detection, root-cause diagnosis, or
+general anomaly detection. Report new-onset incident recall together with
+normal-time alert occupancy, false alert events per observed day, and the
+unfiltered same-threshold baseline. If the selection gate fails, it is a
+negative result, not a CV performance claim.
