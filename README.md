@@ -262,8 +262,8 @@ For example, to evaluate the existing MOMENT forecasting configuration:
 
 ```bash
 python kaggle/long_swat_tsfm_replay.py \
-  --normal-input /kaggle/input/swat-dataset-secure-water-treatment-system/SWaT_Dataset_Normal_v1.csv \
-  --attack-input /kaggle/input/swat-dataset-secure-water-treatment-system/SWaT_Dataset_Attack_v0.csv \
+  --normal-input /kaggle/input/swat-dataset-secure-water-treatment-system/normal.csv \
+  --attack-input /kaggle/input/swat-dataset-secure-water-treatment-system/attack.csv \
   --private-runner /kaggle/input/private-tsfm-runtime/kaggle_private/run_tsfm_scores.py \
   --private-source-root /kaggle/input/private-tsfm-runtime/src \
   --moment-checkpoint /kaggle/input/private-tsfm-runtime/checkpoints/MOMENT-1-small \
