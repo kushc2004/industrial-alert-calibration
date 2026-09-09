@@ -65,4 +65,7 @@ def test_separate_sessions_preserve_normal_then_attack_order(tmp_path):
     }).to_csv(attack, index=False)
     prepared, metadata = prepare_minute_swat_sessions(normal, attack)
     assert prepared.label.tolist() == [0, 0, 0, 1]
-    assert metadata["session_mode"] == "normal_then_attack"
+    assert prepared["Timestamp"].is_monotonic_increasing
+    assert prepared["Timestamp"].iloc[2] == prepared["Timestamp"].iloc[1] + pd.Timedelta(minutes=1)
+    assert metadata["session_mode"] == "normal_then_attack_replay_clock"
+    assert metadata["attack_timestamp_offset_seconds"] == -(23 * 60 * 60 + 58 * 60)

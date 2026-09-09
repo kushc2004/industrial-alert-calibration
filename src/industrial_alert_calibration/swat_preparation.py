@@ -67,9 +67,11 @@ def _resample_swat(frame: pd.DataFrame, cadence: str) -> pd.DataFrame:
     return prepared
 
 
-def _metadata(prepared: pd.DataFrame, raw_rows: int, cadence: str, session_mode: str) -> dict:
+def _metadata(
+    prepared: pd.DataFrame, raw_rows: int, cadence: str, session_mode: str, **extra: object
+) -> dict:
     sensors = [column for column in prepared.columns if column not in {"Timestamp", "label"}]
-    return {
+    metadata = {
         "cadence": cadence,
         "session_mode": session_mode,
         "raw_rows_after_deduplication": raw_rows,
@@ -80,6 +82,8 @@ def _metadata(prepared: pd.DataFrame, raw_rows: int, cadence: str, session_mode:
         "attack_minutes": int(prepared["label"].sum()),
         "label_use": "offline evaluation only; no label-derived feature transformation or scoring",
     }
+    metadata.update(extra)
+    return metadata
 
 
 def prepare_minute_swat(path: Path, cadence: str = "1min") -> tuple[pd.DataFrame, dict]:
@@ -103,10 +107,39 @@ def prepare_minute_swat_sessions(normal_path: Path, attack_path: Path, cadence: 
         raise ValueError("normal session contains attack labels")
     normal_prepared = _resample_swat(normal, cadence)
     attack_prepared = _resample_swat(attack, cadence)
+    # The two public files are independent collection sessions and their
+    # wall-clock ranges may overlap.  For an offline deployment replay their
+    # sequence, rather than their unrelated absolute clocks, is causal: train
+    # and calibrate on the completed healthy session, then evaluate the later
+    # attack session.  Place the latter immediately after the former so alert
+    # rates are measured over observed telemetry, not an arbitrary calendar
+    # gap.  Sensor values and labels are unchanged.
+    cadence_delta = pd.to_timedelta(cadence)
+    original_attack_start = attack_prepared["Timestamp"].iloc[0]
+    original_attack_end = attack_prepared["Timestamp"].iloc[-1]
+    replay_attack_start = normal_prepared["Timestamp"].iloc[-1] + cadence_delta
+    offset = replay_attack_start - original_attack_start
+    attack_prepared = attack_prepared.copy()
+    attack_prepared["Timestamp"] = attack_prepared["Timestamp"] + offset
     prepared = pd.concat([normal_prepared, attack_prepared], ignore_index=True)
     if not prepared["Timestamp"].is_monotonic_increasing:
-        raise ValueError("normal and attack sessions do not have chronological timestamps")
-    return prepared, _metadata(prepared, len(normal) + len(attack), cadence, "normal_then_attack")
+        raise ValueError("session replay clock is not monotonic after normalization")
+    return prepared, _metadata(
+        prepared,
+        len(normal) + len(attack),
+        cadence,
+        "normal_then_attack_replay_clock",
+        normal_session_start=normal_prepared["Timestamp"].iloc[0].isoformat(),
+        normal_session_end=normal_prepared["Timestamp"].iloc[-1].isoformat(),
+        attack_session_start=original_attack_start.isoformat(),
+        attack_session_end=original_attack_end.isoformat(),
+        replay_attack_start=replay_attack_start.isoformat(),
+        attack_timestamp_offset_seconds=float(offset.total_seconds()),
+        replay_clock_note=(
+            "Attack-session timestamps were shifted only to create a contiguous "
+            "normal-then-attack offline replay; sensor values and labels were unchanged."
+        ),
+    )
 
 
 def write_prepared_swat(source: Path, output: Path, cadence: str = "1min") -> dict:
