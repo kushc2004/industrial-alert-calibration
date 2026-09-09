@@ -120,11 +120,35 @@ def main() -> None:
     scores_dir = run_dir / "scores"
     prepared_path = run_dir / "prepared_swat.parquet"
     labels_path = run_dir / "labels.csv"
+    preparation_path = run_dir / "preparation.json"
     run_dir.mkdir(parents=True, exist_ok=True)
     if args.artifact_cache:
         _restore_artifacts(Path(args.artifact_cache), run_dir)
 
-    if not (args.resume and prepared_path.exists() and labels_path.exists()):
+    expected_session_mode = "normal_then_attack_replay_clock" if args.normal_input else "single_file"
+    existing_metadata: dict[str, object] = {}
+    if preparation_path.exists():
+        try:
+            existing_metadata = json.loads(preparation_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    preparation_matches = (
+        existing_metadata.get("session_mode") == expected_session_mode
+        and existing_metadata.get("cadence") == args.cadence
+    )
+    needs_preparation = not (
+        args.resume and prepared_path.exists() and labels_path.exists() and preparation_matches
+    )
+    if needs_preparation:
+        # Never reuse score streams produced against a different source order or
+        # cadence.  Those files look valid structurally but would invalidate a
+        # chronological replay.
+        if scores_dir.exists():
+            for score_path in scores_dir.glob("*.csv"):
+                score_path.unlink()
+            manifest = scores_dir / "score_manifest.json"
+            if manifest.exists():
+                manifest.unlink()
         if args.normal_input:
             metadata = write_prepared_swat_sessions(
                 Path(args.normal_input), Path(args.attack_input), prepared_path, args.cadence
@@ -132,7 +156,7 @@ def main() -> None:
         else:
             metadata = write_prepared_swat(Path(args.swat_input), prepared_path, args.cadence)
         pd.read_parquet(prepared_path)[["Timestamp", "label"]].to_csv(labels_path, index=False)
-        (run_dir / "preparation.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+        preparation_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
     try:
         preflight = _preflight_baseline(prepared_path, args.baseline_fraction, args.minimum_baseline_rows)
