@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from industrial_alert_calibration.aggregation_ablation import write_aggregation_ablation
 from industrial_alert_calibration.operational_replay import main as replay_main
 from industrial_alert_calibration.swat_preparation import write_prepared_swat, write_prepared_swat_sessions
 
@@ -32,6 +33,10 @@ def _valid_score(path: Path) -> bool:
     return path.exists() and path.stat().st_size > 100
 
 
+def _valid_residuals(path: Path) -> bool:
+    return path.exists() and path.stat().st_size > 1000
+
+
 def _restore_artifacts(cache_dir: Path, run_dir: Path) -> None:
     """Seed a new Kaggle session from a read-only saved artifact dataset."""
     for relative in ("prepared_swat.parquet", "labels.csv", "preparation.json", "scores/score_manifest.json"):
@@ -47,6 +52,14 @@ def _restore_artifacts(cache_dir: Path, run_dir: Path) -> None:
         for source in cached_scores.glob("*.csv"):
             destination = destination_scores / source.name
             if not _valid_score(destination) and _valid_score(source):
+                shutil.copy2(source, destination)
+    cached_residuals = cache_dir / "residuals"
+    if cached_residuals.exists():
+        destination_residuals = run_dir / "residuals"
+        destination_residuals.mkdir(parents=True, exist_ok=True)
+        for source in cached_residuals.glob("*.parquet"):
+            destination = destination_residuals / source.name
+            if not _valid_residuals(destination) and _valid_residuals(source):
                 shutil.copy2(source, destination)
 
 
@@ -108,8 +121,12 @@ def main() -> None:
                         help="Initial known-healthy fraction used only to fit score scaling.")
     parser.add_argument("--minimum-baseline-rows", type=int, default=512,
                         help="Shared score warm-up requirement; retain 512 for MOMENT comparison.")
+    parser.add_argument("--warmup-rows", type=int, default=512,
+                        help="Initial rows excluded from every score stream and aggregation comparison.")
     parser.add_argument("--configs", nargs="+", choices=CONFIGURATIONS, default=list(CONFIGURATIONS),
                         help="Configurations to score in this invocation; enables checkpointed Kaggle runs.")
+    parser.add_argument("--aggregation-ablation-config", choices=CONFIGURATIONS,
+                        help="Score one configuration, export its residual matrix, and compare diagonal against full-covariance aggregation.")
     parser.add_argument("--artifact-cache", help="Read-only prior long-swat-replay artifact directory to restore.")
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
@@ -118,6 +135,7 @@ def main() -> None:
 
     run_dir = Path(args.run_dir)
     scores_dir = run_dir / "scores"
+    residuals_dir = run_dir / "residuals"
     prepared_path = run_dir / "prepared_swat.parquet"
     labels_path = run_dir / "labels.csv"
     preparation_path = run_dir / "preparation.json"
@@ -149,6 +167,9 @@ def main() -> None:
             manifest = scores_dir / "score_manifest.json"
             if manifest.exists():
                 manifest.unlink()
+        if residuals_dir.exists():
+            for residual_path in residuals_dir.glob("*.parquet"):
+                residual_path.unlink()
         if args.normal_input:
             metadata = write_prepared_swat_sessions(
                 Path(args.normal_input), Path(args.attack_input), prepared_path, args.cadence
@@ -159,18 +180,30 @@ def main() -> None:
         preparation_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
     try:
-        preflight = _preflight_baseline(prepared_path, args.baseline_fraction, args.minimum_baseline_rows)
+        preflight = _preflight_baseline(
+            prepared_path, args.baseline_fraction,
+            max(args.minimum_baseline_rows, args.warmup_rows),
+        )
     except ValueError as error:
         (run_dir / "preflight.json").write_text(json.dumps({"status": "failed", "error": str(error)}, indent=2) + "\n", encoding="utf-8")
         raise
     (run_dir / "preflight.json").write_text(json.dumps({"status": "passed", **preflight}, indent=2) + "\n", encoding="utf-8")
 
-    missing = [name for name in args.configs if not _valid_score(scores_dir / f"{name}.csv")]
+    requested_configs = [args.aggregation_ablation_config] if args.aggregation_ablation_config else args.configs
+    if args.aggregation_ablation_config:
+        target = args.aggregation_ablation_config
+        missing = [target] if not (
+            _valid_score(scores_dir / f"{target}.csv")
+            and _valid_residuals(residuals_dir / f"{target}.parquet")
+        ) else []
+    else:
+        missing = [name for name in requested_configs if not _valid_score(scores_dir / f"{name}.csv")]
     if missing:
         command = [
             sys.executable, args.private_runner, "--prepared", str(prepared_path),
             "--output-dir", str(scores_dir), "--baseline-fraction", str(args.baseline_fraction),
-            "--configs", *missing,
+            "--warmup-rows", str(args.warmup_rows), "--configs", *missing,
+            "--residual-dir", str(residuals_dir),
         ]
         if args.private_source_root:
             command.extend(["--source-root", args.private_source_root])
@@ -181,6 +214,22 @@ def main() -> None:
         if args.resume:
             command.append("--resume")
         subprocess.run(command, check=True)
+
+    if args.aggregation_ablation_config:
+        target = args.aggregation_ablation_config
+        residual_path = residuals_dir / f"{target}.parquet"
+        if not _valid_residuals(residual_path):
+            raise RuntimeError(f"Private runner did not write the required residual artifact: {residual_path}")
+        baseline_rows = int(len(pd.read_parquet(prepared_path, columns=["label"])) * args.baseline_fraction)
+        result = write_aggregation_ablation(
+            residual_path, labels_path, run_dir / "aggregation_ablation" / target,
+            baseline_rows=baseline_rows, warmup_rows=args.warmup_rows,
+            holdout_fraction=args.holdout_fraction, min_onset_recall=args.min_onset_recall,
+            max_false_alerts_per_day=args.max_false_alerts_per_day,
+        )
+        print(result["comparison"].to_string(index=False))
+        print(f"Wrote aggregation ablation artifacts to {run_dir / 'aggregation_ablation' / target}")
+        return
 
     incomplete = [name for name in CONFIGURATIONS if not _valid_score(scores_dir / f"{name}.csv")]
     if incomplete:

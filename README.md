@@ -244,3 +244,37 @@ session. Pass its `long-swat-replay` directory through `--artifact-cache`; the
 runner restores valid completed score files and only computes the requested
 missing configurations. A complete five-score cache triggers the replay
 automatically.
+
+### Residual-aggregation ablation
+
+To measure the value of full-covariance Mahalanobis aggregation itself, update
+the private runtime dataset with its matching `kaggle_private/run_tsfm_scores.py`
+from your private source tree, then run one configuration with
+`--aggregation-ablation-config`. The runner saves that configuration's complete
+per-sensor residual matrix and derives two score streams from exactly the same
+rows, healthy calibration prefix, warm-up, labels, chronology split and alert
+budget:
+
+* `independent_standardized_rms`: diagonal-covariance comparator;
+* `mahalanobis`: full-covariance distance.
+
+For example, to evaluate the existing MOMENT forecasting configuration:
+
+```bash
+python kaggle/long_swat_tsfm_replay.py \
+  --normal-input /kaggle/input/swat-dataset-secure-water-treatment-system/SWaT_Dataset_Normal_v1.csv \
+  --attack-input /kaggle/input/swat-dataset-secure-water-treatment-system/SWaT_Dataset_Attack_v0.csv \
+  --private-runner /kaggle/input/private-tsfm-runtime/kaggle_private/run_tsfm_scores.py \
+  --private-source-root /kaggle/input/private-tsfm-runtime/src \
+  --moment-checkpoint /kaggle/input/private-tsfm-runtime/checkpoints/MOMENT-1-small \
+  --gtt-checkpoint /kaggle/input/private-tsfm-runtime/checkpoints/GTT-1.7/GTT-1.7.pt \
+  --run-dir /kaggle/working/mahalanobis-ablation \
+  --aggregation-ablation-config moment_forecast \
+  --resume
+```
+
+The result is in
+`aggregation_ablation/moment_forecast/comparison.csv` and `metrics.json`.
+Keep the residual parquet alongside those files when saving a Kaggle output
+dataset. On a retry, `--resume` reuses both the score and residual artifact;
+if the residual file is absent, it recomputes only that one configuration.
