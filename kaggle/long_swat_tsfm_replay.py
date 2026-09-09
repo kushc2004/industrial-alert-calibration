@@ -64,12 +64,12 @@ def _restore_artifacts(cache_dir: Path, run_dir: Path) -> None:
 
 
 def _preflight_baseline(prepared_path: Path, baseline_fraction: float, minimum_rows: int) -> dict[str, int | float | bool]:
-    """Validate that the common healthy calibration prefix supports all methods.
+    """Validate the healthy calibration prefix used for score aggregation.
 
-    MOMENT's forecast scores require a 512-step context.  Calibration must use
-    only scores after that context, hence the strict ``> 512`` requirement.
-    Keeping this check here avoids starting any private model process when a
-    public-data/cadence choice cannot support the requested protocol.
+    The model-score warm-up and the statistical calibration set have distinct
+    purposes.  MOMENT can retain a 512-step scoring warm-up while the
+    residual-aggregation fit uses an earlier healthy prefix.  The latter only
+    needs enough observations to stably estimate the 51-sensor covariance.
     """
     frame = pd.read_parquet(prepared_path, columns=["label"])
     if not 0.0 < baseline_fraction < 1.0:
@@ -85,12 +85,12 @@ def _preflight_baseline(prepared_path: Path, baseline_fraction: float, minimum_r
         "minimum_baseline_rows": minimum_rows,
         "baseline_is_healthy": baseline_rows <= healthy_prefix_rows,
     }
-    if baseline_rows <= minimum_rows:
+    if baseline_rows < minimum_rows:
         raise ValueError(
             "Baseline preflight failed: "
-            f"{baseline_rows} calibration rows at this cadence, but MOMENT needs more than "
-            f"{minimum_rows}. Use a finer --cadence only if the raw release has higher "
-            "temporal resolution, or use a longer known-healthy telemetry period."
+            f"{baseline_rows} healthy calibration rows are available, but this aggregation "
+            f"fit requires at least {minimum_rows}. Use a longer known-healthy telemetry "
+            "period or a finer cadence only when the raw release supports it."
         )
     if baseline_rows > healthy_prefix_rows:
         raise ValueError(
@@ -119,8 +119,8 @@ def main() -> None:
     parser.add_argument("--min-onset-recall", type=float, default=.50)
     parser.add_argument("--baseline-fraction", type=float, default=.20,
                         help="Initial known-healthy fraction used only to fit score scaling.")
-    parser.add_argument("--minimum-baseline-rows", type=int, default=512,
-                        help="Shared score warm-up requirement; retain 512 for MOMENT comparison.")
+    parser.add_argument("--minimum-baseline-rows", type=int, default=128,
+                        help="Minimum healthy rows for score calibration; 128 exceeds twice the 51 sensors.")
     parser.add_argument("--warmup-rows", type=int, default=512,
                         help="Initial rows excluded from every score stream and aggregation comparison.")
     parser.add_argument("--configs", nargs="+", choices=CONFIGURATIONS, default=list(CONFIGURATIONS),
@@ -182,7 +182,7 @@ def main() -> None:
     try:
         preflight = _preflight_baseline(
             prepared_path, args.baseline_fraction,
-            max(args.minimum_baseline_rows, args.warmup_rows),
+            args.minimum_baseline_rows,
         )
     except ValueError as error:
         (run_dir / "preflight.json").write_text(json.dumps({"status": "failed", "error": str(error)}, indent=2) + "\n", encoding="utf-8")

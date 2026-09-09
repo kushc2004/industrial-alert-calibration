@@ -48,7 +48,7 @@ def test_baseline_preflight_rejects_contaminated_or_short_prefix(tmp_path):
     pd.DataFrame({"label": [0] * 600 + [1] * 400}).to_parquet(prepared)
     with pytest.raises(ValueError, match="includes labelled attacks"):
         _preflight_baseline(prepared, 0.8, 512)
-    with pytest.raises(ValueError, match="MOMENT needs more than 512"):
+    with pytest.raises(ValueError, match="aggregation fit requires at least 512"):
         _preflight_baseline(prepared, 0.2, 512)
 
 
