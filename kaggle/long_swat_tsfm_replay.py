@@ -228,6 +228,10 @@ def main() -> None:
             baseline_rows=baseline_rows, warmup_rows=args.warmup_rows,
             holdout_fraction=args.holdout_fraction, min_onset_recall=args.min_onset_recall,
             max_false_alerts_per_day=args.max_false_alerts_per_day,
+            # Separate public normal and attack files do not contain genuine
+            # normal observations between attack incidents.  Measure false
+            # alerts on held-out normal telemetry, not those omitted gaps.
+            session_aware=expected_session_mode == "normal_then_attack_replay_clock",
         )
         print(result["comparison"].to_string(index=False))
         print(f"Wrote aggregation ablation artifacts to {run_dir / 'aggregation_ablation' / target}")
