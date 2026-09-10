@@ -111,14 +111,16 @@ def main() -> None:
     parser.add_argument("--moment-checkpoint", help="Private mounted MOMENT checkpoint directory.")
     parser.add_argument("--gtt-checkpoint", help="Private mounted GTT checkpoint file.")
     parser.add_argument("--run-dir", default="/kaggle/working/long-swat-replay")
-    # Five-minute aggregation keeps the full normal+attack release tractable
-    # for per-window forecasting while materially extending the observed span.
-    parser.add_argument("--cadence", default="5min")
-    parser.add_argument("--holdout-fraction", type=float, default=.30)
+    # Ten-second bins retain the short labelled SWaT incidents while keeping a
+    # full-session residual replay practical on a Kaggle T4.
+    parser.add_argument("--cadence", default="10s")
+    # The final half of complete incidents is held out.  With the full SWaT
+    # attack session this is roughly 17 later incidents, not a tail of points.
+    parser.add_argument("--holdout-fraction", type=float, default=.50)
     parser.add_argument("--max-false-alerts-per-day", type=float, default=1.0)
     parser.add_argument("--min-onset-recall", type=float, default=.50)
-    parser.add_argument("--baseline-fraction", type=float, default=.20,
-                        help="Initial known-healthy fraction used only to fit score scaling.")
+    parser.add_argument("--baseline-fraction", type=float, default=.50,
+                        help="Initial known-healthy normal-session fraction used only to fit score scaling.")
     parser.add_argument("--minimum-baseline-rows", type=int, default=128,
                         help="Minimum healthy rows for score calibration; 128 exceeds twice the 51 sensors.")
     parser.add_argument("--warmup-rows", type=int, default=512,
